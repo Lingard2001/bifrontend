@@ -6,6 +6,14 @@ const BarChartComponent = ({ data, title = "Bar Chart", config = {} }) => {
   console.log('BarChart received data:', data);
   console.log('BarChart received config:', config);
   
+  // Debug data structure
+  if (data && data.length > 0) {
+    console.log('First row keys:', Object.keys(data[0]));
+    console.log('First row values:', Object.values(data[0]));
+    console.log('Config columnMapping:', config.columnMapping);
+    console.log('Config aggregation:', config.aggregation);
+  }
+  
   // Default config values
   const {
     backgroundColor = '#ffffff',
@@ -44,7 +52,7 @@ const BarChartComponent = ({ data, title = "Bar Chart", config = {} }) => {
         <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />}
           <XAxis 
-            dataKey="name" 
+            dataKey={config.columnMapping?.category || "Subcategory"} 
             tick={{ fontSize: 12, fill: '#333' }}
             axisLine={{ stroke: '#e0e0e0' }}
           />
@@ -61,7 +69,20 @@ const BarChartComponent = ({ data, title = "Bar Chart", config = {} }) => {
           />
           {showLegend && <Legend />}
           <Bar 
-            dataKey="value" 
+            dataKey={(() => {
+              // Check if aggregation is applied and find the correct dataKey
+              if (config.aggregation?.value && config.aggregation.value !== 'none') {
+                const baseColumn = config.columnMapping?.value || 'Cost';
+                const aggType = config.aggregation.value;
+                const aggColumn = `${baseColumn}_${aggType}`;
+                
+                // Check if aggregated column exists in data
+                if (data && data.length > 0 && data[0][aggColumn] !== undefined) {
+                  return aggColumn;
+                }
+              }
+              return config.columnMapping?.value || "Cost";
+            })()} 
             fill={dataColor}
             radius={[4, 4, 0, 0]}
             stroke={dataColor}

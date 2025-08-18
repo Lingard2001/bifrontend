@@ -47,25 +47,71 @@ const PieChartComponent = ({ data, title = "Pie Chart", config = {} }) => {
     '#795548'
   ];
 
+  // Dynamically determine the data keys from the first data item
+  const firstDataItem = data[0];
+  
+  // Use columnMapping from config if available, otherwise try to detect from data
+  let labelKey, valueKey;
+  
+  if (config.columnMapping && config.columnMapping.label && config.columnMapping.value) {
+    // Use the configured column mapping
+    labelKey = config.columnMapping.label;
+    
+    // Check if we have aggregation and look for aggregated column name
+    if (config.aggregation && config.aggregation.value && config.aggregation.value !== 'none') {
+      const aggregatedKey = `${config.columnMapping.value}_${config.aggregation.value}`;
+      // Check if aggregated key exists in data
+      if (firstDataItem[aggregatedKey] !== undefined) {
+        valueKey = aggregatedKey;
+        console.log('Using aggregated column:', valueKey);
+      } else {
+        valueKey = config.columnMapping.value;
+        console.log('Aggregated column not found, using original:', valueKey);
+      }
+    } else {
+      valueKey = config.columnMapping.value;
+      console.log('No aggregation, using original column:', valueKey);
+    }
+    
+    console.log('Using configured column mapping:', { labelKey, valueKey });
+  } else {
+    // Fallback: try to detect from data structure
+    const keys = Object.keys(firstDataItem);
+    labelKey = keys[0]; // First key is usually label
+    valueKey = keys[1]; // Second key is usually value
+    console.log('Fallback: detected keys from data:', { labelKey, valueKey, keys });
+  }
+  
+  console.log('Final keys for pie chart:', { labelKey, valueKey, firstDataItem });
+
   return (
     <Box sx={{ 
       width: '100%', 
       height: '100%',
       backgroundColor: backgroundColor,
       borderRadius: 2,
-      p: 1
+      p: 0.5
     }}>
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+        <PieChart margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
           <Pie
             data={data}
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-            outerRadius={80}
+            label={({ name, percent }) => {
+              // Faqat katta slice'larda label ko'rsatish (5% dan yuqori)
+              if (percent > 0.05) {
+                return `${name} ${(percent * 100).toFixed(0)}%`;
+              }
+              return '';
+            }}
+            outerRadius="90%"
+            innerRadius="30%"
             fill="#8884d8"
-            dataKey="value"
+            dataKey={valueKey}
+            nameKey={labelKey}
+            paddingAngle={2}
           >
             {data.map((entry, index) => (
               <Cell 
@@ -83,7 +129,17 @@ const PieChartComponent = ({ data, title = "Pie Chart", config = {} }) => {
               borderRadius: 4
             }}
           />
-          {showLegend && <Legend />}
+          {showLegend && (
+            <Legend 
+              layout="horizontal"
+              verticalAlign="bottom"
+              align="center"
+              wrapperStyle={{
+                paddingTop: '10px',
+                fontSize: '12px'
+              }}
+            />
+          )}
         </PieChart>
       </ResponsiveContainer>
     </Box>

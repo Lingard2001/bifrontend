@@ -2,6 +2,7 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://lingard2001.github.io/bifrontend",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -18,14 +19,22 @@
     "react-github-login": "^1.0.3",
     "react-router-dom": "^7.8.0",
     "react-scripts": "5.0.1",
+    "reactflow": "^11.11.4",
     "recharts": "^3.1.0",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "gh-pages": "^6.3.0"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": [

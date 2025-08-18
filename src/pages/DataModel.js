@@ -21,18 +21,24 @@ import {
   Select,
   MenuItem,
   IconButton,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   AccountTree as AccountTreeIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Link as LinkIcon
+  Link as LinkIcon,
+  DragIndicator as DragIcon,
+  ViewModule as ViewModuleIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import MiniSidebar from '../components/MiniSidebar';
 import HeaderComponent from '../components/HeaderComponent';
 import DatasetsSidebar from '../components/DatasetsSidebar';
+import DragDropRelationshipBuilder from '../components/DragDropRelationshipBuilder';
+import ReactFlowDataModelBuilder from '../components/ReactFlowDataModelBuilder';
 
 const DataModel = () => {
   const navigate = useNavigate();
@@ -40,6 +46,7 @@ const DataModel = () => {
   const [selectedDataset, setSelectedDataset] = useState(null);
   const [relationships, setRelationships] = useState([]);
   const [relationshipModalOpen, setRelationshipModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const [newRelationship, setNewRelationship] = useState({
     sourceDataset: '',
     sourceColumn: '',
@@ -176,7 +183,27 @@ const DataModel = () => {
     }
   };
 
-  const handleAddRelationship = () => {
+  const handleAddRelationship = (relationshipData) => {
+    console.log('🔍 handleAddRelationship called with:', relationshipData);
+    
+    // If called from DragDropRelationshipBuilder (with relationshipData)
+    if (relationshipData && relationshipData.sourceDataset) {
+      const relationship = {
+        id: relationshipData.id || Date.now().toString(),
+        ...relationshipData,
+        createdAt: relationshipData.createdAt || new Date().toISOString()
+      };
+      
+      console.log('✅ Creating relationship from drag & drop:', relationship);
+      
+      const updatedRelationships = [...relationships, relationship];
+      setRelationships(updatedRelationships);
+      saveRelationshipsToStorage(updatedRelationships);
+      
+      return;
+    }
+    
+    // If called from modal form (existing logic)
     if (newRelationship.sourceDataset && newRelationship.sourceColumn && 
         newRelationship.targetDataset && newRelationship.targetColumn) {
       const relationship = {
@@ -184,6 +211,8 @@ const DataModel = () => {
         ...newRelationship,
         createdAt: new Date().toISOString()
       };
+      
+      console.log('✅ Creating relationship from modal form:', relationship);
       
       const updatedRelationships = [...relationships, relationship];
       setRelationships(updatedRelationships);
@@ -202,6 +231,16 @@ const DataModel = () => {
 
   const handleDeleteRelationship = (relationshipId) => {
     const updatedRelationships = relationships.filter(r => r.id !== relationshipId);
+    setRelationships(updatedRelationships);
+    saveRelationshipsToStorage(updatedRelationships);
+  };
+
+  const handleRelationshipToggle = (relationshipId) => {
+    const updatedRelationships = relationships.map(r => 
+      r.id === relationshipId 
+        ? { ...r, visible: r.visible === false ? true : false }
+        : r
+    );
     setRelationships(updatedRelationships);
     saveRelationshipsToStorage(updatedRelationships);
   };
@@ -268,7 +307,7 @@ const DataModel = () => {
                     <ListItemText
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600 }}>
                             {sourceDataset?.name || 'Unknown'} → {targetDataset?.name || 'Unknown'}
                           </Typography>
                           <Chip
@@ -281,10 +320,10 @@ const DataModel = () => {
                       }
                       secondary={
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" component="div" color="text.secondary">
                             <strong>Manba:</strong> {sourceDataset?.name || 'Unknown'}.{relationship.sourceColumn}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" component="div" color="text.secondary">
                             <strong>Maqsad:</strong> {targetDataset?.name || 'Unknown'}.{relationship.targetColumn}
                           </Typography>
                         </Box>
@@ -1001,8 +1040,50 @@ const DataModel = () => {
         pr: '300px', 
         pt: '80px'
       }}>
-        {/* Relationships */}
-        {renderRelationshipsSection()}
+        {/* Tab Navigation */}
+        <Card elevation={2} sx={{ borderRadius: 2 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs 
+              value={activeTab} 
+              onChange={(e, newValue) => setActiveTab(newValue)}
+              sx={{ 
+                '& .MuiTab-root': { 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '1rem'
+                }
+              }}
+            >
+              <Tab 
+                icon={<ViewModuleIcon />} 
+                label="React Flow Builder" 
+                iconPosition="start"
+                sx={{ minHeight: 64 }}
+              />
+              <Tab 
+                icon={<AccountTreeIcon />} 
+                label="List View" 
+                iconPosition="start"
+                sx={{ minHeight: 64 }}
+              />
+            </Tabs>
+          </Box>
+        </Card>
+
+        {/* Tab Content */}
+        {activeTab === 0 ? (
+          // React Flow Builder View
+          <ReactFlowDataModelBuilder
+            datasets={datasets}
+            relationships={relationships}
+            onRelationshipCreate={handleAddRelationship}
+            onRelationshipDelete={handleDeleteRelationship}
+            onRelationshipToggle={handleRelationshipToggle}
+          />
+        ) : (
+          // List View (existing relationships section)
+          renderRelationshipsSection()
+        )}
       </Box>
 
       {/* Datasets Sidebar - Always Visible */}

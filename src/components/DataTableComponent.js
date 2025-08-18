@@ -1,7 +1,7 @@
 import React from 'react';
 import { Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Box } from '@mui/material';
 
-const DataTableComponent = ({ dataset, title = "Data Table", config = {} }) => {
+const DataTableComponent = ({ dataset, data, title = "Data Table", config = {} }) => {
   // Default config values
   const {
     backgroundColor = '#ffffff',
@@ -11,11 +11,27 @@ const DataTableComponent = ({ dataset, title = "Data Table", config = {} }) => {
     height = 300
   } = config;
 
+  // Use data prop if available, otherwise fallback to dataset
+  const tableData = data || dataset;
+  
+  console.log('DataTableComponent received:', { data, dataset, tableData });
+  console.log('Table data structure:', {
+    hasData: !!data,
+    hasDataset: !!dataset,
+    hasTableData: !!tableData,
+    tableDataType: typeof tableData,
+    isArray: Array.isArray(tableData),
+    hasColumns: !!tableData?.columns,
+    hasRows: !!tableData?.rows,
+    columnsLength: tableData?.columns?.length,
+    rowsLength: tableData?.rows?.length
+  });
+  
   // Get selected columns from config, or use all columns if none selected
-  const selectedColumns = config.columnMapping?.columns || dataset?.columns || [];
-  const columnsToDisplay = selectedColumns.length > 0 ? selectedColumns : (dataset?.columns || []);
+  const selectedColumns = config.columnMapping?.columns || tableData?.columns || [];
+  const columnsToDisplay = selectedColumns.length > 0 ? selectedColumns : (tableData?.columns || []);
 
-  if (!dataset || !dataset.rows || dataset.rows.length === 0) {
+  if (!tableData || !tableData.rows || tableData.rows.length === 0) {
     return (
       <Box sx={{ 
         width: '100%', 
@@ -78,7 +94,7 @@ const DataTableComponent = ({ dataset, title = "Data Table", config = {} }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {dataset.rows.slice(0, 20).map((row, rowIndex) => (
+            {tableData.rows.slice(0, 100).map((row, rowIndex) => (
               <TableRow 
                 key={rowIndex} 
                 sx={{ 
@@ -110,7 +126,7 @@ const DataTableComponent = ({ dataset, title = "Data Table", config = {} }) => {
         borderTop: '1px solid #e0e0e0'
       }}>
         <Typography variant="caption" color="text.secondary">
-          {Math.min(dataset.rows.length, 20)} / {dataset.rows.length} qator, {columnsToDisplay.length} ustun ko'rsatilmoqda
+          {Math.min(tableData.rows.length, 100)} / {tableData.rows.length} qator, {columnsToDisplay.length} ustun ko'rsatilmoqda
         </Typography>
       </Box>
     </Box>

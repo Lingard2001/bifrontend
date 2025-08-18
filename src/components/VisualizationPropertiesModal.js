@@ -1,1282 +1,1109 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
-  TextField,
+  Box,
+  Typography,
+  Grid,
+  Paper,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Box,
-  Typography,
-  Grid,
-  Slider,
-  FormControlLabel,
-  Switch,
+  TextField,
   Chip,
+  Tabs,
+  Tab,
+  Switch,
+  FormControlLabel,
   IconButton,
-  Paper,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  InputAdornment
+  Tooltip
 } from '@mui/material';
 import {
   Close as CloseIcon,
-  Settings as SettingsIcon,
-  Title as TitleIcon,
-  AspectRatio as AspectRatioIcon,
-  ViewModule as ViewModuleIcon,
-  ColorLens as ColorLensIcon,
-  Tune as TuneIcon,
   Label as LabelIcon,
   ShowChart as ShowChartIcon,
   Category as CategoryIcon,
-  TrendingUp as TrendingUpIcon,
-  FilterDrama as ShadowIcon
+  AspectRatio as AspectRatioIcon,
+  Palette as PaletteIcon,
+  Settings as SettingsIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 
-const VisualizationPropertiesModal = ({
-  open,
-  onClose,
-  visualization,
-  dataset,
-  onSave,
-  onDelete
-}) => {
+// Chart components
+import BarChartComponent from './BarChartComponent';
+import LineChartComponent from './LineChartComponent';
+import PieChartComponent from './PieChartComponent';
+import DataTableComponent from './DataTableComponent';
+
+const VisualizationPropertiesModal = ({ open, onClose, visualization, onSave, datasets, relationships }) => {
+  const [activeTab, setActiveTab] = useState(0);
   const [properties, setProperties] = useState({
+    chartType: 'bar',
     title: '',
-    width: 400,
-    height: 300,
-    backgroundColor: '#ffffff',
-    borderColor: '#e0e0e0',
-    titleColor: '#333333',
-    dataColor: '#1976d2',
-    showTitle: true,
-    showBorder: true,
-    showGrid: true,
-    showLegend: true,
-    chartType: 'auto',
     columnMapping: {},
-    showShadow: true,
-    borderRadius: 5,
-    borderWidth: 2,
-    shadowBlur: 20,
-    shadowOffsetX: 4,
-    shadowOffsetY: 4,
-    shadowColor: '#000000',
-    aggregations: { value: 'none' }
+    aggregation: { value: 'sum' },
+    size: { width: 400, height: 300 },
+    colors: {},
+    options: {}
   });
 
-  // Debug: Log initial properties
-  console.log('Initial properties state:', properties);
-
-  // Debug: Log property changes
+  // Initialize properties when visualization changes
   useEffect(() => {
-    console.log('Properties updated:', properties);
-  }, [properties]);
-
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [activeColorField, setActiveColorField] = useState('');
-
-  useEffect(() => {
-    if (visualization && visualization.config) {
+    if (visualization) {
       setProperties({
-        title: visualization.config.title || visualization.name,
-        width: visualization.config.width || 400,
-        height: visualization.config.height || 300,
-        backgroundColor: visualization.config.backgroundColor || '#ffffff',
-        borderColor: visualization.config.borderColor || '#e0e0e0',
-        titleColor: visualization.config.titleColor || '#333333',
-        dataColor: visualization.config.dataColor || '#1976d2',
-        showTitle: visualization.config.showTitle !== false,
-        showBorder: visualization.config.showBorder !== false,
-        showGrid: visualization.config.showGrid !== false,
-        showLegend: visualization.config.showLegend !== false,
-        chartType: visualization.config.chartType || 'auto',
-        columnMapping: visualization.config.columnMapping || {},
-        showShadow: visualization.config.showShadow !== false,
-        borderRadius: visualization.config.borderRadius ?? 5,
-        borderWidth: visualization.config.borderWidth ?? 2,
-        shadowBlur: visualization.config.shadowBlur || 20,
-        shadowOffsetX: visualization.config.shadowOffsetX || 4,
-        shadowOffsetY: visualization.config.shadowOffsetY || 4,
-        shadowColor: visualization.config.shadowColor || '#000000',
-        aggregations: visualization.config.aggregations || { value: 'none' }
+        title: visualization.config?.title || '',
+        columnMapping: visualization.config?.columnMapping || {},
+        aggregation: visualization.config?.aggregation || {},
+        size: visualization.size || { width: 400, height: 300 },
+        colors: visualization.config?.colors || {},
+        options: visualization.config?.options || {}
+      });
+    } else {
+      // Default properties when no visualization
+      setProperties({
+        title: '',
+        columnMapping: {},
+        aggregation: { value: 'sum' },
+        size: { width: 400, height: 300 },
+        colors: {},
+        options: {}
       });
     }
+    
   }, [visualization]);
 
+  // Get available columns from all datasets
+  const getAvailableColumns = () => {
+    // Check if we have datasets
+    if (!datasets || datasets.length === 0) {
+      return [];
+    }
+
+    const allColumns = [];
+    const seenColumns = new Set(); // Track seen column names to avoid duplicates
+
+    // Process all datasets
+    datasets.forEach(dataset => {
+      if (!dataset) return;
+
+      let columns = [];
+      
+      // Check if columns exist and convert to proper format
+      if (dataset.columns && Array.isArray(dataset.columns)) {
+        // If columns is array of strings, extract from data
+        columns = dataset.columns.map(colName => {
+          // Get sample values for type detection
+          const sampleValues = getSampleValuesForColumn(dataset, colName);
+          const detectedType = detectColumnType(sampleValues);
+          
+          return {
+            name: colName,
+            type: detectedType,
+            datasetId: dataset._id || dataset.id,
+            datasetName: dataset.name
+          };
+        });
+      } else if (dataset.rows && dataset.rows.length > 0) {
+        // If no columns but rows exist, extract from first row
+        const firstRow = dataset.rows[0];
+        columns = Object.keys(firstRow).map(colName => {
+          // Get sample values for type detection
+          const sampleValues = getSampleValuesForColumn(dataset, colName);
+          const detectedType = detectColumnType(sampleValues);
+          
+          return {
+            name: colName,
+            type: detectedType,
+            datasetId: dataset._id || dataset.id,
+            datasetName: dataset.name
+          };
+        });
+      }
+
+      // Only add columns that haven't been seen before
+      columns.forEach(col => {
+        const uniqueKey = `${col.name}-${col.datasetId}`;
+        if (!seenColumns.has(uniqueKey)) {
+          seenColumns.add(uniqueKey);
+          allColumns.push(col);
+        }
+      });
+    });
+
+    return allColumns;
+  };
+
+    // Get sample values for a specific column
+  const getSampleValuesForColumn = (dataset, columnName) => {
+    let dataRows = [];
+    if (dataset.data && Array.isArray(dataset.data)) {
+      dataRows = dataset.data;
+    } else if (dataset.rows && Array.isArray(dataset.rows)) {
+      dataRows = dataset.rows;
+    }
+    
+    if (dataRows.length === 0) return [];
+    
+    // Take first 100 rows for type detection
+    const sampleRows = dataRows.slice(0, 100);
+    return sampleRows.map(row => row[columnName]).filter(val => val !== undefined && val !== null && val !== '');
+  };
+
+  // Apply aggregation to data
+  const applyAggregation = (data, columnName, aggregationType) => {
+    if (!columnName || !aggregationType) return data;
+    
+    const values = data.map(row => row[columnName]).filter(val => val !== undefined && val !== null && val !== '');
+    
+    if (values.length === 0) return data;
+    
+    let result;
+    switch (aggregationType) {
+      case 'sum':
+        result = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+        break;
+      case 'avg':
+        const sum = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+        result = sum / values.length;
+        break;
+      case 'count':
+        result = values.length;
+        break;
+      case 'min':
+        result = Math.min(...values.map(val => parseFloat(val) || 0));
+        break;
+      case 'max':
+        result = Math.max(...values.map(val => parseFloat(val) || 0));
+        break;
+      default:
+        return data;
+    }
+    
+    return result;
+  };
+
+  // Apply aggregation to array of values
+  const applyAggregationToValues = (values, aggregationType) => {
+    if (!values || values.length === 0) return 0;
+    
+    let result;
+    switch (aggregationType) {
+      case 'sum':
+        result = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+        break;
+      case 'avg':
+        const sum = values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+        result = sum / values.length;
+        break;
+      case 'count':
+        result = values.length;
+        break;
+      case 'min':
+        result = Math.min(...values.map(val => parseFloat(val) || 0));
+        break;
+      case 'max':
+        result = Math.max(...values.map(val => parseFloat(val) || 0));
+        break;
+      default:
+        return 0;
+    }
+    
+    return result;
+  };
+
+  // Detect column type based on sample values
+  const detectColumnType = (sampleValues) => {
+    if (sampleValues.length === 0) return 'categorical';
+
+    // Check for date patterns
+    const datePatterns = [
+      /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+      /^\d{2}\/\d{2}\/\d{4}$/, // MM/DD/YYYY
+      /^\d{2}-\d{2}-\d{4}$/, // DD-MM-YYYY
+      /^\d{4}\/\d{2}\/\d{2}$/, // YYYY/MM/DD
+      /^\d{1,2}\/\d{1,2}\/\d{2,4}$/, // M/D/YY or M/D/YYYY
+      /^\d{1,2}-\d{1,2}-\d{2,4}$/, // M-D-YY or M-D-YYYY
+    ];
+
+    const dateCount = sampleValues.filter(val => {
+      const strVal = String(val);
+      return datePatterns.some(pattern => pattern.test(strVal));
+    }).length;
+
+    const dateRatio = dateCount / sampleValues.length;
+    if (dateRatio > 0.6) return 'date';
+
+    // Check for numeric values
+    const numericCount = sampleValues.filter(val => {
+      const strVal = String(val);
+      // Check if it's a pure number (no separators like - or /)
+      if (strVal.includes('-') || strVal.includes('/')) return false;
+      
+      const num = parseFloat(val);
+      return !isNaN(num) && isFinite(num) && String(num).length === strVal.length;
+    }).length;
+
+    const numericRatio = numericCount / sampleValues.length;
+    if (numericRatio > 0.7) return 'numeric';
+
+    // Default to categorical
+    return 'categorical';
+  };
+
+  // Handle column mapping changes
+  const handleColumnMapping = (field, value) => {
+    
+    setProperties(prev => {
+      const newProperties = {
+        ...prev,
+        columnMapping: {
+          ...prev.columnMapping,
+          [field]: value
+        }
+      };
+      
+      return newProperties;
+    });
+  };
+
+  // Handle aggregation changes
+  const handleAggregationChange = (field, value) => {
+    
+    setProperties(prev => {
+      const newProperties = {
+        ...prev,
+        aggregation: {
+          ...prev.aggregation,
+          [field]: value
+        }
+      };
+      
+      return newProperties;
+    });
+  };
+
+  // Force re-render of preview when column mapping or aggregation changes
+  useEffect(() => {
+  }, [properties.columnMapping, properties.aggregation]);
+
+  // Handle property changes
   const handlePropertyChange = (field, value) => {
-    console.log(`Property changed: ${field} = ${value}`);
     setProperties(prev => ({
       ...prev,
       [field]: value
     }));
   };
 
-  const handleColorChange = (field, color) => {
-    handlePropertyChange(field, color);
-    setColorPickerOpen(false);
-    setActiveColorField('');
-  };
-
+  // Handle save
   const handleSave = () => {
+    // Find the dataset that contains the mapped columns
+    let targetDataset = null;
+    if (properties.columnMapping && Object.keys(properties.columnMapping).length > 0) {
+      for (const dataset of datasets) {
+        if (dataset.columns && Array.isArray(dataset.columns)) {
+          const hasRequiredColumns = Object.values(properties.columnMapping).every(colName => {
+            if (!colName) return true;
+            return dataset.columns.some(col => 
+              col === colName || (typeof col === 'object' && col.name === colName)
+            );
+          });
+          if (hasRequiredColumns) {
+            targetDataset = dataset;
+            break;
+          }
+        }
+      }
+    }
+    
     const updatedVisualization = {
       ...visualization,
+      datasetId: targetDataset?._id || visualization.datasetId,
+      datasetName: targetDataset?.name || visualization.datasetName,
       config: {
-        ...properties,
-        borderColor: properties.borderColor,
-        borderWidth: properties.borderWidth,
-        borderRadius: properties.borderRadius,
-        showBorder: properties.showBorder,
-        showShadow: properties.showShadow,
-        shadowBlur: properties.shadowBlur,
-        shadowOffsetX: properties.shadowOffsetX,
-        shadowOffsetY: properties.shadowOffsetY,
-        shadowColor: properties.shadowColor,
+        ...visualization.config,
+        title: properties.title,
         columnMapping: properties.columnMapping,
-        aggregations: properties.aggregations
-      }
+        aggregation: properties.aggregation,
+        colors: properties.colors,
+        options: properties.options
+      },
+      size: properties.size
     };
+
     onSave(updatedVisualization);
     onClose();
   };
 
-  const getAvailableColumns = () => {
-    console.log("[DEBUG] Dataset:", dataset);
-    if (!dataset) return [];
-    console.log("[DEBUG] Dataset columns:", dataset.columns);
+  // Generate sample data for preview from all datasets
+  const generateSampleData = () => {
+    console.log('generateSampleData called with:', { columnMapping: properties.columnMapping, datasets });
     
-    return dataset.columns.map(col => ({
-      name: col,
-      type: typeof dataset.rows[0]?.[col] === 'number' ? 'numeric' : 'categorical'
-    }));
-  };
-
-  const getChartTypeOptions = () => {
-    const baseType = visualization?.type || 'bar-chart';
-    
-    switch (baseType) {
-      case 'bar-chart':
-        return [
-          { value: 'auto', label: 'Avtomatik' },
-          { value: 'vertical', label: 'Vertikal ustunlar' },
-          { value: 'horizontal', label: 'Gorizontal ustunlar' },
-          { value: 'grouped', label: 'Guruhlangan ustunlar' }
-        ];
-      case 'line-chart':
-        return [
-          { value: 'auto', label: 'Avtomatik' },
-          { value: 'smooth', label: 'Silliq chiziq' },
-          { value: 'stepped', label: 'Qadamli chiziq' },
-          { value: 'area', label: 'Maydon chiziq' }
-        ];
-      case 'pie-chart':
-        return [
-          { value: 'auto', label: 'Avtomatik' },
-          { value: 'donut', label: 'Donut chart' },
-          { value: 'exploded', label: 'Ajratilgan bo\'laklar' }
-        ];
-      default:
-        return [{ value: 'auto', label: 'Avtomatik' }];
+    if (!properties.columnMapping || Object.keys(properties.columnMapping).length === 0) {
+      console.log('No column mapping configured');
+      return [];
     }
-  };
 
-  // Column mapping uchun required fields
-  const getRequiredFields = () => {
-    const chartType = visualization?.type || 'bar-chart';
-    
-    switch (chartType) {
-      case 'pie-chart':
-        return [
-          { key: 'label', label: 'Label (Nomi)', icon: <LabelIcon />, required: true, description: 'Pie chart bo\'laklarining nomlari', type: 'single', allowedType: 'categorical' },
-          { key: 'value', label: 'Value (Qiymat)', icon: <ShowChartIcon />, required: true, description: 'Pie chart bo\'laklarining qiymatlari', type: 'single', allowedType: 'numeric' }
-        ];
-      case 'bar-chart':
-        return [
-          { key: 'category', label: 'Category (Kategoriya)', icon: <CategoryIcon />, required: true, description: 'Bar chart ustunlarining nomlari', type: 'single', allowedType: 'categorical' },
-          { key: 'value', label: 'Value (Qiymat)', icon: <ShowChartIcon />, required: true, description: 'Bar chart ustunlarining balandligi', type: 'single', allowedType: 'numeric' },
-          { key: 'group', label: 'Group (Guruh)', icon: <TrendingUpIcon />, required: false, description: 'Bar chart guruhlari (ixtiyoriy)', type: 'single', allowedType: 'categorical' }
-        ];
-      case 'line-chart':
-        return [
-          { key: 'category', label: 'Category (Kategoriya)', icon: <CategoryIcon />, required: true, description: 'Line chart nuqtalarining nomlari', type: 'single', allowedType: 'categorical' },
-          { key: 'value', label: 'Value (Qiymat)', icon: <ShowChartIcon />, required: true, description: 'Line chart nuqtalarining qiymatlari', type: 'single', allowedType: 'numeric' },
-          { key: 'series', label: 'Series (Qator)', icon: <TrendingUpIcon />, required: false, description: 'Line chart qatorlari (ixtiyoriy)', type: 'single', allowedType: 'categorical' }
-        ];
-      case 'data-table':
-      case 'table':
-        return [
-          { key: 'columns', label: 'Columns (Ustunlar)', icon: <CategoryIcon />, required: true, description: 'Jadvalda ko\'rsatiladigan ustunlar (bir nechtasini tanlang)', type: 'multiple', allowedType: 'any' }
-        ];
-      default:
+    // Get column mapping keys and values
+    const columnMappingKeys = Object.keys(properties.columnMapping);
+    const columnMappingValues = Object.values(properties.columnMapping);
+    console.log('Column mapping keys:', columnMappingKeys);
+    console.log('Column mapping values:', columnMappingValues);
+
+    // Special handling for table visual - check first
+    if (visualization?.type === 'data-table' || visualization?.type === 'table') {
+      const tableColumns = properties.columnMapping.columns;
+      if (tableColumns && Array.isArray(tableColumns) && tableColumns.length > 0) {
+        console.log('Table visual detected with columns:', tableColumns);
+        
+        // For table visual, we need to find which dataset each column belongs to
+        const columnDatasetMap = {};
+        console.log('Debugging column mapping:');
+        console.log('Table columns to find:', tableColumns);
+        console.log('Available datasets:', datasets.map(d => ({ name: d.name, columns: d.columns })));
+        
+        tableColumns.forEach(columnName => {
+          console.log(`Looking for column: ${columnName}`);
+          for (const dataset of datasets) {
+            console.log(`Checking dataset: ${dataset.name}`);
+            console.log(`Dataset columns:`, dataset.columns);
+            
+            if (dataset.columns && Array.isArray(dataset.columns)) {
+              const foundColumn = dataset.columns.find(col => {
+                console.log(`Comparing: ${col} with ${columnName}`);
+                return col === columnName || (typeof col === 'object' && col.name === columnName);
+              });
+              
+              if (foundColumn) {
+                columnDatasetMap[columnName] = dataset;
+                console.log(`Found column ${columnName} in dataset ${dataset.name}`);
+                break;
+              }
+            }
+          }
+        });
+        
+        console.log('Column dataset mapping:', columnDatasetMap);
+        
+        // Create sample data by combining rows from relevant datasets
+        const allTableRows = [];
+        const maxRowsPerDataset = 50;
+        
+        for (const dataset of datasets) {
+          if (!dataset.rows || !Array.isArray(dataset.rows)) continue;
+          
+          const relevantColumns = tableColumns.filter(col => 
+            dataset.columns && dataset.columns.some(datasetCol => 
+              datasetCol === col || (typeof datasetCol === 'object' && datasetCol.name === col)
+            )
+          );
+          
+          if (relevantColumns.length > 0) {
+            const datasetRows = dataset.rows.slice(0, maxRowsPerDataset).map(row => {
+              const tableRow = {};
+              tableColumns.forEach(columnName => {
+                if (row[columnName] !== undefined) {
+                  tableRow[columnName] = row[columnName];
+                } else {
+                  // Try to find the value in other datasets or set empty
+                  tableRow[columnName] = '';
+                }
+              });
+              return tableRow;
+            });
+            
+            allTableRows.push(...datasetRows);
+          }
+        }
+        
+        const tableData = {
+          columns: tableColumns,
+          rows: allTableRows.slice(0, 20) // Limit to 20 rows total
+        };
+        
+        console.log('Final processed table data:', tableData);
+        return tableData;
+      } else {
+        console.log('Table visual but no columns selected');
         return [];
+      }
     }
-  };
 
-  // Column mapping ni yangilash
-  const handleColumnMapping = (fieldKey, columnName, isMultiple = false) => {
-    const newMapping = { ...properties.columnMapping };
+    // For non-table visuals, find the best dataset automatically
+    console.log('Finding best dataset for chart visualization...');
     
-    if (isMultiple) {
-      // Multiple selection uchun
-      if (!newMapping[fieldKey]) {
-        newMapping[fieldKey] = [];
+    // Find the primary dataset that contains the mapped columns
+    let primaryDataset = null;
+    for (const dataset of datasets) {
+      if (!dataset) continue;
+      
+      let dataRows = [];
+      if (dataset.data && Array.isArray(dataset.data)) {
+        dataRows = dataset.data;
+      } else if (dataset.rows && Array.isArray(dataset.rows)) {
+        dataRows = dataset.rows;
       }
       
-      if (columnName === '') {
-        // Clear all
-        newMapping[fieldKey] = [];
-      } else if (newMapping[fieldKey].includes(columnName)) {
-        // Remove column if already selected
-        newMapping[fieldKey] = newMapping[fieldKey].filter(col => col !== columnName);
-      } else {
-        // Add column
-        newMapping[fieldKey] = [...newMapping[fieldKey], columnName];
-      }
-    } else {
-      // Single selection uchun (eski usul)
-      if (columnName === '') {
-        delete newMapping[fieldKey];
-      } else {
-        newMapping[fieldKey] = columnName;
+      if (dataRows.length > 0) {
+        // Check if this dataset has the required columns
+        const hasRequiredColumns = columnMappingValues.every(colName => {
+          if (!colName) return true; // Skip empty mappings
+          return dataRows[0] && dataRows[0][colName] !== undefined;
+        });
+        
+        if (hasRequiredColumns) {
+          primaryDataset = dataset;
+          console.log('Found primary dataset:', dataset.name);
+          break;
+        }
       }
     }
-    
-    handlePropertyChange('columnMapping', newMapping);
-  };
 
-  // Column mapping ni ko'rsatish
-  const renderColumnMapping = () => {
-    const requiredFields = getRequiredFields();
-    const availableColumns = getAvailableColumns();
-    console.log("[DEBUG] availableColumns:", availableColumns);
-    console.log("[DEBUG] requiredFields:", requiredFields);
-    console.log("[DEBUG] properties.columnMapping:", properties.columnMapping);
+    if (!primaryDataset) {
+      console.log('No dataset found with all required columns');
+      return [];
+    }
+
+    // Get data from primary dataset only
+    let dataRows = [];
+    if (primaryDataset.data && Array.isArray(primaryDataset.data)) {
+      dataRows = primaryDataset.data;
+    } else if (primaryDataset.rows && Array.isArray(primaryDataset.rows)) {
+      dataRows = primaryDataset.rows;
+    }
+
+    if (dataRows.length === 0) {
+      console.log('No data rows in primary dataset');
+      return [];
+    }
+
+    // Take first 100 rows for preview to ensure all categories are included
+    const sampleRows = dataRows.slice(0, 100);
+    console.log('Sample rows from primary dataset:', sampleRows);
     
-    return (
-      <Grid item xs={12}>
-        <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-            <TuneIcon sx={{ color: '#d32f2f', fontSize: 24 }} />
-            <Typography variant="h6" sx={{ color: '#d32f2f', fontWeight: 600 }}>
-              Ustunlar joylashuvi
-            </Typography>
-          </Box>
+    let processedData;
+    
+    // Special processing for table visual
+    if (visualization?.type === 'data-table' || visualization?.type === 'table') {
+      const tableColumns = properties.columnMapping.columns;
+      console.log('Table visual detected with columns:', tableColumns);
+      
+      // For table visual, we need to find which dataset each column belongs to
+      const columnDatasetMap = {};
+      tableColumns.forEach(columnName => {
+        for (const dataset of datasets) {
+          if (dataset.columns && dataset.columns.some(col => col.name === columnName)) {
+            columnDatasetMap[columnName] = dataset;
+            break;
+          }
+        }
+      });
+      
+      // Create sample data by combining rows from relevant datasets
+      const allTableRows = [];
+      const maxRowsPerDataset = 10;
+      
+      for (const dataset of datasets) {
+        if (!dataset.rows || !Array.isArray(dataset.rows)) continue;
+        
+        const relevantColumns = tableColumns.filter(col => 
+          dataset.columns && dataset.columns.some(datasetCol => datasetCol.name === col)
+        );
+        
+        if (relevantColumns.length > 0) {
+          const datasetRows = dataset.rows.slice(0, maxRowsPerDataset).map(row => {
+            const tableRow = {};
+            tableColumns.forEach(columnName => {
+              if (row[columnName] !== undefined) {
+                tableRow[columnName] = row[columnName];
+              } else {
+                // Try to find the value in other datasets or set empty
+                tableRow[columnName] = '';
+              }
+            });
+            return tableRow;
+          });
           
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Har bir ustunni chart da qayerga qo'yish kerakligini belgilang
-          </Typography>
+          allTableRows.push(...datasetRows);
+        }
+      }
+      
+      processedData = {
+        columns: tableColumns,
+        rows: allTableRows.slice(0, 100) // Limit to 100 rows total
+      };
+    } else {
+      // Regular processing for charts
+      processedData = sampleRows.map(row => {
+        const sampleRow = {};
+        columnMappingKeys.forEach(field => {
+          const columnName = properties.columnMapping[field];
+          console.log(`Processing field ${field} -> column ${columnName} for row:`, row);
+          if (columnName && row[columnName] !== undefined) {
+            sampleRow[columnName] = row[columnName];
+            console.log(`Added ${columnName}: ${row[columnName]}`);
+          } else {
+            console.log(`Column ${columnName} not found in row or is undefined`);
+          }
+        });
+        return sampleRow;
+      });
 
-          {/* AGAR availableColumns bo'sh bo'lsa, xabar chiqsin */}
-          {availableColumns.length === 0 ? (
-            <Box sx={{ p: 2, backgroundColor: '#fff3e0', borderRadius: 2, border: '1px solid #ffd180', textAlign: 'center' }}>
-              <Typography variant="body2" color="error">
-                Ustunlar topilmadi. Datasetda ustunlar mavjudligiga ishonch hosil qiling.
-              </Typography>
-            </Box>
-          ) : (
-            <Grid container spacing={3}>
-              {requiredFields.map((field) => {
-                const validColumns = field.allowedType && field.allowedType !== 'any'
-                  ? availableColumns.filter(c => c.type === field.allowedType)
-                  : availableColumns;
+      // Apply aggregation for pie chart if specified
+      if (visualization?.type === 'pie-chart' && properties.aggregation && properties.aggregation.value && properties.aggregation.value !== 'none') {
+        const aggregationType = properties.aggregation.value;
+        const valueColumn = properties.columnMapping.value;
+        const labelColumn = properties.columnMapping.label;
+        
+        if (valueColumn && labelColumn) {
+          // Group by label and apply aggregation
+          const groupedData = {};
+          processedData.forEach(row => {
+            const label = row[labelColumn];
+            if (!groupedData[label]) {
+              groupedData[label] = [];
+            }
+            groupedData[label].push(row[valueColumn]);
+          });
+          
+          // Create new aggregated data structure
+          const aggregatedData = [];
+          Object.keys(groupedData).forEach(label => {
+            const values = groupedData[label].filter(val => val !== undefined && val !== null && val !== '');
+            const aggregatedValue = applyAggregationToValues(values, aggregationType);
+            
+            // Create one row per label with aggregated value
+            aggregatedData.push({
+              [labelColumn]: label,
+              [`${valueColumn}_${aggregationType}`]: aggregatedValue
+            });
+          });
+          
+          // Replace processedData with aggregated data
+          processedData = aggregatedData;
+          
+          console.log(`Applied ${aggregationType} by label ${labelColumn}:`, aggregatedData);
+        }
+      }
+    }
 
-                return (
-                  <Grid item xs={12} md={6} key={field.key}>
-                    <Paper elevation={1} sx={{ p: 2, borderRadius: 2, border: '1px solid #e0e0e0' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                        <Box sx={{ color: field.required ? '#d32f2f' : '#666' }}>
-                          {field.icon}
-                        </Box>
-                        <Typography variant="subtitle1" sx={{ 
-                          fontWeight: 600,
-                          color: field.required ? '#d32f2f' : '#333'
-                        }}>
-                          {field.label}
-                          {field.required && <span style={{ color: '#d32f2f' }}> *</span>}
-                        </Typography>
-                      </Box>
-                      
-                      <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                        {field.description}
-                      </Typography>
+    // Apply aggregation if specified
+    if (properties.aggregation && properties.aggregation.value && properties.aggregation.value !== 'none') {
+      const aggregationType = properties.aggregation.value;
+      const valueColumn = properties.columnMapping.value;
+      const categoryColumn = properties.columnMapping.category;
+      
+      if (valueColumn && aggregationType !== 'none') {
+        if (categoryColumn) {
+          // Group by category and apply aggregation
+          const groupedData = {};
+          processedData.forEach(row => {
+            const category = row[categoryColumn];
+            if (!groupedData[category]) {
+              groupedData[category] = [];
+            }
+            groupedData[category].push(row[valueColumn]);
+          });
+          
+          // Create new aggregated data structure
+          const aggregatedData = [];
+          Object.keys(groupedData).forEach(category => {
+            const values = groupedData[category].filter(val => val !== undefined && val !== null && val !== '');
+            const aggregatedValue = applyAggregationToValues(values, aggregationType);
+            
+            // Create one row per category with aggregated value
+            aggregatedData.push({
+              [categoryColumn]: category,
+              [`${valueColumn}_${aggregationType}`]: aggregatedValue
+            });
+          });
+          
+          // Replace processedData with aggregated data
+          processedData.length = 0;
+          processedData.push(...aggregatedData);
+          
+          console.log(`Applied ${aggregationType} by category ${categoryColumn}:`, aggregatedData);
+        } else {
+          // Fallback: apply to all data
+          const aggregatedValue = applyAggregation(processedData, valueColumn, aggregationType);
+          if (typeof aggregatedValue === 'number') {
+            processedData.forEach(row => {
+              row[`${valueColumn}_${aggregationType}`] = aggregatedValue;
+            });
+          }
+        }
+      } else if (valueColumn && aggregationType === 'none') {
+        // If aggregation is 'none', keep original data structure
+        console.log(`No aggregation applied to ${valueColumn}, keeping original data`);
+      }
+    }
 
-                      {field.type === 'multiple' ? (
-                        // Multiple selection uchun checkbox lar (faqat validColumns)
-                        <Box>
-                          <Box sx={{ mb: 2 }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => handleColumnMapping(field.key, '', true)}
-                              sx={{ fontSize: '0.7rem', mb: 1 }}
-                            >
-                              Barchasini tozalash
-                            </Button>
-                          </Box>
-                          
-                          <Box sx={{ 
-                            maxHeight: '200px', 
-                            overflow: 'auto',
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1,
-                            p: 1
-                          }}>
-                            {validColumns.map((column) => {
-                              const isSelected = properties.columnMapping[field.key]?.includes(column.name) || false;
-                              return (
-                                <Box
-                                  key={column.name}
-                                  sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1,
-                                    p: 0.5,
-                                    cursor: 'pointer',
-                                    borderRadius: 1,
-                                    '&:hover': { backgroundColor: '#f5f5f5' },
-                                    backgroundColor: isSelected ? '#e3f2fd' : 'transparent'
-                                  }}
-                                  onClick={() => handleColumnMapping(field.key, column.name, true)}
-                                >
-                                  <Box
-                                    sx={{
-                                      width: 16,
-                                      height: 16,
-                                      border: '2px solid #ccc',
-                                      borderRadius: 2,
-                                      backgroundColor: isSelected ? '#1976d2' : 'transparent',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      color: 'white',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold'
-                                    }}
-                                  >
-                                    {isSelected && '✓'}
-                                  </Box>
-                                  <Chip 
-                                    label={column.type === 'numeric' ? 'Son' : 'Matn'} 
-                                    size="small" 
-                                    color={column.type === 'numeric' ? 'primary' : 'secondary'}
-                                    sx={{ fontSize: '0.6rem', height: '18px' }}
-                                  />
-                                  <Typography variant="body2" sx={{ flex: 1 }}>
-                                    {column.name}
-                                  </Typography>
-                                </Box>
-                              );
-                            })}
-                          </Box>
-                        </Box>
-                      ) : (
-                        // Single selection uchun dropdown (faqat validColumns)
-                        <>
-                          <FormControl fullWidth size="small">
-                            <InputLabel>
-                              {field.allowedType === 'numeric' ? 'Sonli ustun tanlang' : field.allowedType === 'categorical' ? 'Matnli ustun tanlang' : 'Ustun tanlang'}
-                            </InputLabel>
-                            <Select
-                              value={properties.columnMapping[field.key] || ''}
-                              onChange={(e) => handleColumnMapping(field.key, e.target.value, false)}
-                              label={field.allowedType === 'numeric' ? 'Sonli ustun tanlang' : field.allowedType === 'categorical' ? 'Matnli ustun tanlang' : 'Ustun tanlang'}
-                              variant="outlined"
-                            >
-                              <MenuItem value="">
-                                <em>Ustun tanlanmagan</em>
-                              </MenuItem>
-                              {validColumns.map((column) => (
-                                <MenuItem key={column.name} value={column.name}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Chip 
-                                      label={column.type === 'numeric' ? 'Son' : 'Matn'} 
-                                      size="small" 
-                                      color={column.type === 'numeric' ? 'primary' : 'secondary'}
-                                      sx={{ fontSize: '0.7rem', height: '20px' }}
-                                    />
-                                    {column.name}
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-
-                          {/* Aggregation selector for numeric value field */}
-                          {field.key === 'value' && field.allowedType === 'numeric' && (
-                            <Box sx={{ mt: 1.5 }}>
-                              <FormControl fullWidth size="small">
-                                <InputLabel>Aggregation</InputLabel>
-                                <Select
-                                  value={properties.aggregations?.value || 'none'}
-                                  label="Aggregation"
-                                  onChange={(e) => setProperties(prev => ({ ...prev, aggregations: { ...(prev.aggregations || {}), value: e.target.value } }))}
-                                >
-                                  <MenuItem value="none">Hech biri</MenuItem>
-                                  <MenuItem value="sum">Sum</MenuItem>
-                                  <MenuItem value="avg">Avg</MenuItem>
-                                  <MenuItem value="count">Count</MenuItem>
-                                </Select>
-                              </FormControl>
-                            </Box>
-                          )}
-                        </>
-                      )}
-
-                      {properties.columnMapping[field.key] && (
-                        <Box sx={{ mt: 1, p: 1, backgroundColor: '#f0f8ff', borderRadius: 1, border: '1px solid #e3f2fd' }}>
-                          <Typography variant="caption" color="primary" sx={{ fontWeight: 500 }}>
-                            Tanlangan: {
-                              Array.isArray(properties.columnMapping[field.key]) 
-                                ? properties.columnMapping[field.key].join(', ') 
-                                : properties.columnMapping[field.key]
-                            }
-                          </Typography>
-                        </Box>
-                      )}
-                    </Paper>
-                  </Grid>
-                );
-              })}
-            </Grid>
-          )}
-
-          {/* Column Mapping Summary */}
-          <Box sx={{ mt: 3, p: 2, backgroundColor: '#f8f9fa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
-            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: '#666' }}>
-              Ustunlar joylashuvi:
-            </Typography>
-            <List dense sx={{ py: 0 }}>
-              {requiredFields.map((field) => (
-                <ListItem key={field.key} sx={{ py: 0.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}>
-                    {field.icon}
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={
-                      <Typography variant="body2">
-                        <strong>{field.label}:</strong> {
-                          Array.isArray(properties.columnMapping[field.key]) 
-                            ? properties.columnMapping[field.key].join(', ') || 'Tanlanmagan'
-                            : properties.columnMapping[field.key] || 'Tanlanmagan'
-                        }
-                      </Typography>
-                    }
-                    secondary={field.description}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </Box>
-        </Paper>
-      </Grid>
-    );
+    console.log('Final processed sample data:', processedData);
+    return processedData;
   };
 
-  // Real-time visualization preview
+  // Render visualization preview
   const renderVisualizationPreview = () => {
-    const baseType = visualization?.type || 'bar-chart';
-    const subType = properties.chartType || 'auto';
-    const requiredFields = getRequiredFields();
+    const sampleData = generateSampleData();
     
-    // Check if required fields are mapped
-    const hasRequiredFields = requiredFields
-      .filter(field => field.required)
-      .every(field => properties.columnMapping[field.key]);
-
-    if (!hasRequiredFields) {
+    if (!sampleData || sampleData.length === 0) {
       return (
         <Box sx={{ 
           width: '100%', 
-          height: properties.height,
-          backgroundColor: '#f5f5f5',
-          border: '2px dashed #ccc',
-          borderRadius: 3,
+          height: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          flexDirection: 'column'
+          backgroundColor: '#f5f5f5',
+          borderRadius: 2
         }}>
-          <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-            Chart ko'rinishi
-          </Typography>
-          <Typography variant="body2" color="text.secondary" align="center">
-            Ustunlar joylashuvini to'ldiring
+          <Typography variant="body2" color="text.secondary">
+            Ma'lumotlarni ko'rish uchun ustunlarni tanlang
           </Typography>
         </Box>
       );
     }
 
-    // Generate sample data based on column mapping
-    const generateSampleData = () => {
-      if (!dataset || !dataset.rows.length) return [];
-      
-      const sampleRows = dataset.rows.slice(0, 5); // First 5 rows
-      
-      switch (baseType) {
-        case 'pie-chart':
-          const labelCol = properties.columnMapping.label;
-          const valueCol = properties.columnMapping.value;
-          if (labelCol && valueCol) {
-            return sampleRows.map(row => ({
-              name: row[labelCol],
-              value: parseFloat(row[valueCol]) || 0
-            }));
-          }
-          break;
-          
-        case 'bar-chart':
-          const categoryCol = properties.columnMapping.category;
-          const barValueCol = properties.columnMapping.value;
-          if (categoryCol && barValueCol) {
-            return sampleRows.map(row => ({
-              name: row[categoryCol],
-              value: parseFloat(row[barValueCol]) || 0
-            }));
-          }
-          break;
-          
-        case 'line-chart':
-          const lineCategoryCol = properties.columnMapping.category;
-          const lineValueCol = properties.columnMapping.value;
-          if (lineCategoryCol && lineValueCol) {
-            return sampleRows.map(row => ({
-              name: row[lineCategoryCol],
-              value: parseFloat(row[lineValueCol]) || 0
-            }));
-          }
-          break;
-          
-        case 'data-table':
-        case 'table':
-          const columns = properties.columnMapping.columns;
-          if (columns && Array.isArray(columns)) {
-            return sampleRows.map(row => {
-              const tableRow = {};
-              columns.forEach(col => {
-                tableRow[col] = row[col];
-              });
-              return tableRow;
-            });
-          }
-          break;
-        default:
-          return [];
-      }
-      
-      return [];
+    // Create chart config for preview
+    const chartConfig = {
+      title: properties.title,
+      columnMapping: properties.columnMapping,
+      aggregation: properties.aggregation,
+      size: properties.size,
+      colors: properties.colors,
+      options: properties.options
     };
 
-    const sampleData = generateSampleData();
+    console.log('Chart config for preview:', chartConfig);
+    console.log('Sample data for preview:', sampleData);
 
-    // Real-time chart preview with actual chart components
-    const renderChartPreview = () => {
-      if (sampleData.length === 0) return null;
+    // Determine visual type
+    const visualType = visualization?.type || 'bar-chart';
+    console.log('Using visual type:', visualType);
 
-      const previewInnerHeight = Math.max(100, (properties?.height ?? 300) - (properties?.showTitle ? 60 : 20));
-      const labelSpace = 24; // reserved space for bottom labels so they don't get clipped
-      const chartStyle = {
-        width: '100%',
-        height: previewInnerHeight,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      };
+    // Render appropriate chart component
+    switch (visualType) {
+      case 'line-chart':
+        return (
+          <Box sx={{ width: '100%', height: '100%' }}>
+            <LineChartComponent 
+              data={sampleData} 
+              title=""
+              config={chartConfig}
+            />
+          </Box>
+        );
+      case 'bar-chart':
+        return (
+          <Box sx={{ width: '100%', height: '100%' }}>
+            <BarChartComponent
+              data={sampleData}
+              title=""
+              config={chartConfig}
+            />
+          </Box>
+        );
+      case 'pie-chart':
+        return (
+          <Box sx={{ width: '100%', height: '100%' }}>
+            <PieChartComponent
+              data={sampleData}
+              title=""
+              config={chartConfig}
+            />
+          </Box>
+        );
+      case 'data-table':
+      case 'table':
+        return (
+          <Box sx={{ width: '100%', height: '100%' }}>
+            <DataTableComponent
+              data={sampleData}
+              title=""
+              config={chartConfig}
+            />
+          </Box>
+        );
+      default:
+        return (
+          <Box sx={{ width: '100%', height: '100%' }}>
+            <BarChartComponent
+              data={sampleData}
+              title=""
+              config={chartConfig}
+            />
+          </Box>
+        );
+    }
+  };
 
-      switch (baseType) {
-        case 'pie-chart':
-          return (
-            <Box sx={{ ...chartStyle, gap: 2 }}>
-              <Box sx={{ 
-                width: Math.min(previewInnerHeight, properties.width) * 0.6, 
-                height: Math.min(previewInnerHeight, properties.width) * 0.6, 
-                borderRadius: '50%',
-                background: `conic-gradient(
-                  ${properties.dataColor} 0deg 120deg,
-                  ${properties.dataColor}80 120deg 240deg,
-                  ${properties.dataColor}40 240deg 360deg
-                )`,
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: properties.showBorder ? `2px solid ${properties.borderColor}` : 'none',
-                boxShadow: properties.showShadow ? `${properties.shadowOffsetX || 2}px ${properties.shadowOffsetY || 2}px ${properties.shadowBlur || 8}px ${properties.shadowColor || '#000000'}30` : 'none'
-              }}>
-                <Box sx={{ 
-                  width: Math.min(previewInnerHeight, properties.width) * 0.3, 
-                  height: Math.min(previewInnerHeight, properties.width) * 0.3, 
-                  borderRadius: '50%',
-                  backgroundColor: properties.backgroundColor,
-                  border: properties.showBorder ? `1px solid ${properties.borderColor}` : 'none'
-                }} />
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                {sampleData.slice(0, 4).map((item, idx) => (
-                  <Chip 
-                    key={idx} 
-                    size="small" 
-                    variant="outlined" 
-                    label={`${item.name}: ${item.value}`}
-                    sx={{ 
-                      backgroundColor: properties.backgroundColor,
-                      borderColor: properties.borderColor,
-                      color: properties.titleColor
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-          );
-          
+  // Get required columns for each visualization type
+  const getRequiredColumns = (visualType) => {
+    // Use provided visualType or default to bar-chart
+    const type = visualType || 'bar-chart';
+    
+    switch (type) {
         case 'bar-chart':
+      case 'line-chart':
+        return [
+          { key: 'category', label: 'Category (Kategoriya)', required: true, type: 'single', allowedType: ['categorical', 'date'] },
+          { key: 'value', label: 'Value (Qiymat)', required: true, type: 'single', allowedType: ['numeric'] },
+          { key: 'series', label: 'Series (Qator)', required: false, type: 'single', allowedType: ['categorical'] }
+        ];
+      case 'pie-chart':
+        return [
+          { key: 'label', label: 'Label (Belgi)', required: true, type: 'single', allowedType: ['categorical'] },
+          { key: 'value', label: 'Value (Qiymat)', required: true, type: 'single', allowedType: ['numeric'] },
+          { key: 'series', label: 'Series (Qator)', required: false, type: 'single', allowedType: ['categorical'] }
+        ];
+      case 'data-table':
+      case 'table':
+        return [
+          { key: 'columns', label: 'Ustunlar', required: true, type: 'table-columns', allowedType: ['any'] }
+        ];
+      default:
+        return [
+          { key: 'category', label: 'Category (Kategoriya)', required: true, type: 'single', allowedType: ['categorical', 'date'] },
+          { key: 'value', label: 'Value (Qiymat)', required: true, type: 'single', allowedType: ['numeric'] },
+          { key: 'series', label: 'Series (Qator)', required: false, type: 'single', allowedType: ['categorical'] }
+        ];
+    }
+  };
+
+  // Filter columns by allowed type
+  const getFilteredColumns = (allowedType) => {
+    const columns = getAvailableColumns();
+    if (allowedType.includes('any')) return columns;
+    return columns.filter(col => allowedType.includes(col.type));
+  };
+
+  // Render column mapping for specific visualization type
+  const renderColumnMapping = () => {
+    
+    // Use visualization type or default to bar-chart
+    const visualType = visualization?.type || 'bar-chart';
+    const requiredColumns = getRequiredColumns(visualType);
+    
+    if (requiredColumns.length === 0) {
           return (
-            <Box sx={{ ...chartStyle, flexDirection: 'column' }}>
-              <Box sx={{ display: 'flex', alignItems: 'end', gap: 6, height: previewInnerHeight - labelSpace }}>
-                {sampleData.slice(0, 4).map((item, index) => {
-                  const maxVal = Math.max(...sampleData.map(d => d.value || 0)) || 1;
-                  const barHeight = Math.max(8, (item.value || 0) / maxVal * ((previewInnerHeight - labelSpace) - 12));
-                  return (
-                    <Box key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <Box
-                        sx={{
-                          width: 24,
-                          height: `${barHeight}px`,
-                          backgroundColor: properties.dataColor,
-                          borderRadius: properties.borderRadius ? `${properties.borderRadius}px ${properties.borderRadius}px 0 0` : '4px 4px 0 0',
-                          border: properties.showBorder ? `1px solid ${properties.borderColor}` : 'none',
-                          boxShadow: properties.showShadow ? `${properties.shadowOffsetX || 1}px ${properties.shadowOffsetY || 1}px ${properties.shadowBlur || 4}px ${properties.shadowColor || '#000000'}30` : 'none',
-                          transition: 'all 0.3s ease'
-                        }}
-                      />
-                      <Typography variant="caption" sx={{ mt: 0.5, color: properties.titleColor }}>
-                        {item.value}
+        <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
+          <Typography variant="body2">
+            Visual turi topilmadi: {visualType}
                       </Typography>
                     </Box>
                   );
-                })}
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', px: 2, height: labelSpace, alignItems: 'center' }}>
-                {sampleData.slice(0, 4).map((item, index) => (
-                  <Typography key={index} variant="caption" sx={{ color: properties.titleColor }}>
-                    {item.name}
-                  </Typography>
-                ))}
-              </Box>
-            </Box>
-          );
-          
-        case 'line-chart':
+    }
+    
           return (
-            <Box sx={{ ...chartStyle, flexDirection: 'column' }}>
-              <Box sx={{ width: '100%', height: previewInnerHeight - labelSpace, position: 'relative' }}>
-                <svg width="100%" height="100%" viewBox="0 0 200 100">
-                  <polyline
-                    fill="none"
-                    stroke={properties.dataColor}
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={sampleData.slice(0, 4).map((item, index) => {
-                      const maxVal = Math.max(...sampleData.map(d => d.value || 0)) || 1;
-                      const y = 80 - ((item.value || 0) / maxVal) * 60;
-                      const x = 20 + index * 50;
-                      return `${x},${y}`;
-                    }).join(' ')}
-                  />
-                  {sampleData.slice(0, 4).map((item, index) => {
-                    const maxVal = Math.max(...sampleData.map(d => d.value || 0)) || 1;
-                    const y = 80 - ((item.value || 0) / maxVal) * 60;
-                    const x = 20 + index * 50;
+      <Grid container spacing={3}>
+        {requiredColumns.map((column) => (
+          <Grid item xs={12} key={column.key}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              {/* Column Selection */}
+              <FormControl fullWidth size="medium" sx={{ minWidth: '200px', flex: 1 }}>
+                <InputLabel>
+                  {column.label} {column.required && '*'}
+                </InputLabel>
+                {column.type === 'table-columns' ? (
+                  // Special UI for table columns - individual column selection
+                  <Box sx={{ width: '100%' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Table uchun ustunlarni alohida tanlang:
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                      {getFilteredColumns(column.allowedType).map((col) => {
+                        const isSelected = properties.columnMapping[column.key]?.includes(col.name);
                     return (
-                      <g key={index}>
-                        <circle 
-                          cx={x} 
-                          cy={y} 
-                          r="4" 
-                          fill={properties.dataColor} 
-                          stroke={properties.backgroundColor} 
-                          strokeWidth="2"
-                          style={{ filter: properties.showShadow ? `drop-shadow(${properties.shadowOffsetX || 2}px ${properties.shadowOffsetY || 2}px ${properties.shadowBlur || 2}px ${properties.shadowColor || '#000000'}30)` : 'none' }}
-                        />
-                        <text x={x} y={y - 6} textAnchor="middle" fontSize="8" fill={properties.titleColor}>{item.value}</text>
-                      </g>
+                          <Chip
+                            key={`${col.name}-${col.datasetId}`}
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip 
+                                  label={col.type === 'numeric' ? 'sonli' : col.type === 'date' ? 'sana' : 'matn'} 
+                                  size="small" 
+                                  color={col.type === 'numeric' ? 'primary' : col.type === 'date' ? 'success' : 'secondary'}
+                                  sx={{ fontSize: '0.6rem', height: '16px' }}
+                                />
+                                <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                                  {col.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                  {col.datasetName}
+                                </Typography>
+                              </Box>
+                            }
+                            onClick={() => {
+                              const currentColumns = properties.columnMapping[column.key] || [];
+                              if (isSelected) {
+                                // Remove column
+                                handleColumnMapping(column.key, currentColumns.filter(c => c !== col.name));
+                              } else {
+                                // Add column
+                                handleColumnMapping(column.key, [...currentColumns, col.name]);
+                              }
+                            }}
+                            color={isSelected ? 'primary' : 'default'}
+                            variant={isSelected ? 'filled' : 'outlined'}
+                            sx={{ 
+                              cursor: 'pointer',
+                              '&:hover': { opacity: 0.8 }
+                            }}
+                          />
                     );
                   })}
-                </svg>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', px: 2, height: labelSpace, alignItems: 'center' }}>
-                {sampleData.slice(0, 4).map((item, index) => (
-                  <Typography key={index} variant="caption" sx={{ color: properties.titleColor }}>
-                    {item.name}
+                    <Typography variant="caption" color="text.secondary">
+                      Tanlangan ustunlar: {properties.columnMapping[column.key]?.length || 0}
                   </Typography>
-                ))}
               </Box>
-            </Box>
-          );
-          
-        case 'data-table':
-        case 'table':
-          return (
-            <Box sx={{ width: '100%', p: 1, mt: properties.showTitle ? 4 : 0 }}>
-              <TableContainer 
-                component={Paper} 
-                sx={{ 
-                  maxHeight: 160,
-                  border: properties.showBorder ? `1px solid ${properties.borderColor}` : 'none',
-                  borderRadius: properties.borderRadius,
-                  boxShadow: properties.showShadow ? `${properties.shadowOffsetX || 2}px ${properties.shadowOffsetY || 2}px ${properties.shadowBlur || 8}px ${properties.shadowColor || '#000000'}30` : 'none',
-                  overflow: 'hidden'
-                }}
-              >
-                <Table stickyHeader size="small">
-                  <TableHead>
-                    <TableRow>
-                      {(properties.columnMapping.columns || []).map((col) => (
-                        <TableCell key={col} sx={{
-                          fontWeight: 'bold',
-                          backgroundColor: properties.dataColor,
-                          color: '#fff',
-                          fontSize: '0.75rem',
-                          py: 0.5,
-                          borderBottom: properties.showBorder ? `1px solid ${properties.borderColor}` : 'none'
-                        }}>
-                          {col}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {sampleData.slice(0, 4).map((row, rIdx) => (
-                      <TableRow key={rIdx} sx={{ 
-                        backgroundColor: rIdx % 2 === 0 ? properties.backgroundColor : '#f8f9fa',
-                        '&:hover': { backgroundColor: '#e3f2fd' }
-                      }}>
-                        {(properties.columnMapping.columns || []).map((col, cIdx) => (
-                          <TableCell key={cIdx} sx={{ 
-                            fontSize: '0.72rem', 
-                            py: 0.5,
-                            color: properties.titleColor,
-                            borderBottom: properties.showBorder ? `1px solid ${properties.borderColor}40` : 'none'
-                          }}>
-                            {row[col] !== undefined ? row[col] : ''}
-                          </TableCell>
+                ) : column.type === 'multiple' ? (
+                  <Select
+                    multiple
+                    value={properties.columnMapping[column.key] || []}
+                    onChange={(e) => handleColumnMapping(column.key, e.target.value)}
+                    label={`${column.label} ${column.required ? '*' : ''}`}
+                    variant="outlined"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => (
+                          <Chip key={value} label={value} size="small" />
                         ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
             </Box>
-          );
-          
-        default:
-          return null;
-      }
-    };
-
-    return (
-      <Box sx={{ 
-        width: properties.width,
-        height: properties.height,
-        maxHeight: '100%',
-        backgroundColor: properties.backgroundColor,
-        border: properties.showBorder ? `${properties.borderWidth ?? 2}px solid ${properties.borderColor}` : 'none',
-        borderRadius: properties.borderRadius,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        boxShadow: properties.showShadow ? `${properties.shadowOffsetX || 4}px ${properties.shadowOffsetY || 4}px ${properties.shadowBlur || 20}px ${properties.shadowColor || '#000000'}40` : 'none',
-        transition: 'all 0.3s ease',
-        overflow: 'auto',
-        flexShrink: 0,
-        transform: 'scale(1)',
-        '&:hover': {
-          transform: 'scale(1.02)',
-          boxShadow: properties.showShadow ? `${(properties.shadowOffsetX || 4) + 2}px ${(properties.shadowOffsetY || 4) + 2}px ${(properties.shadowBlur || 20) + 5}px ${properties.shadowColor || '#000000'}60` : 'none'
-        }
-      }}>
-        {properties.showTitle && (
-          <Typography
-            variant="h6"
-            sx={{
-              color: properties.titleColor,
-              position: 'absolute',
-              top: 20,
-              left: 20,
-              fontWeight: 600,
-              fontSize: '1.1rem'
-            }}
-          >
-            {properties.title || 'Chart nomi'}
+                    )}
+                  >
+                    {getFilteredColumns(column.allowedType).map(col => (
+                      <MenuItem key={`${col.name}-${col.datasetId}`} value={col.name}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                     <Chip 
+                             label={col.type === 'numeric' ? 'sonli' : col.type === 'date' ? 'sana' : 'matn'} 
+                             size="small" 
+                             color={col.type === 'numeric' ? 'primary' : col.type === 'date' ? 'success' : 'secondary'}
+                             sx={{ fontSize: '0.7rem', height: '20px' }}
+                           />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {col.name}
           </Typography>
-        )}
-        
-        {/* Real-time Chart Preview */}
-        {renderChartPreview()}
-        
-        {/* Chart Info */}
-        <Box sx={{ 
-          position: 'absolute', 
-          bottom: 20, 
-          left: 20, 
-          right: 20,
-          textAlign: 'center'
-        }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            {properties.width} × {properties.height}px
-          </Typography>
-          
-          {/* Shadow Info */}
-          {properties.showShadow && (
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
-                Soya: {properties.shadowOffsetX || 4}px X, {properties.shadowOffsetY || 4}px Y, {properties.shadowBlur || 20}px
+                          <Typography variant="caption" color="text.secondary">
+                            {col.datasetName}
               </Typography>
             </Box>
-          )}
-          
-          {/* Sample Data Info */}
-          {sampleData.length > 0 && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center' }}>
-              {sampleData.slice(0, 3).map((item, index) => (
-                <Chip
-                  key={index}
-                  label={`${item.name || item.value}: ${item.value || '...'}`}
-                  size="small"
+                      </MenuItem>
+                    ))}
+                  </Select>
+                ) : (
+                <Select
+                  value={properties.columnMapping[column.key] || ''}
+                  onChange={(e) => handleColumnMapping(column.key, e.target.value)}
+                  label={`${column.label} ${column.required ? '*' : ''}`}
                   variant="outlined"
-                  sx={{ 
-                    fontSize: '0.6rem', 
-                    height: '18px',
-                    backgroundColor: properties.backgroundColor,
-                    borderColor: properties.borderColor
-                  }}
-                />
-              ))}
+                                  >
+                    <MenuItem value="">Ustun tanlang</MenuItem>
+                    {getFilteredColumns(column.allowedType).map(col => (
+                      <MenuItem key={`${col.name}-${col.datasetId}`} value={col.name}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                <Chip
+                            label={col.type === 'numeric' ? 'sonli' : col.type === 'date' ? 'sana' : 'matn'} 
+                  size="small"
+                            color={col.type === 'numeric' ? 'primary' : col.type === 'date' ? 'success' : 'secondary'}
+                            sx={{ fontSize: '0.7rem', height: '20px' }}
+                          />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {col.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {col.datasetName}
+                        </Typography>
             </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+              </FormControl>
+
+              {/* Aggregation for Value columns */}
+              {column.key === 'value' && properties.columnMapping[column.key] && (
+                <FormControl size="small" sx={{ minWidth: '120px' }}>
+                  <InputLabel>Aggregation</InputLabel>
+                  <Select
+                    value={properties.aggregation[column.key] || 'none'}
+                    onChange={(e) => handleAggregationChange(column.key, e.target.value)}
+                    label="Aggregation"
+                    variant="outlined"
+                  >
+                    <MenuItem value="none">Aggregation yo'q</MenuItem>
+                    <MenuItem value="sum">Sum</MenuItem>
+                    <MenuItem value="avg">Average</MenuItem>
+                    <MenuItem value="count">Count</MenuItem>
+                    <MenuItem value="min">Min</MenuItem>
+                    <MenuItem value="max">Max</MenuItem>
+                  </Select>
+                </FormControl>
           )}
         </Box>
-      </Box>
+          </Grid>
+        ))}
+      </Grid>
     );
   };
 
-  const renderColorPicker = (field, label, currentColor) => (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-      <Box sx={{ minWidth: 140 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>{label}</Typography>
-      </Box>
-      <Box
-        sx={{
-          width: 40,
-          height: 40,
-          backgroundColor: currentColor,
-          border: '2px solid #e0e0e0',
-          borderRadius: 2,
-          cursor: 'pointer',
-          '&:hover': { borderColor: '#1976d2' },
-          transition: 'all 0.2s ease'
-        }}
-        onClick={() => {
-          setActiveColorField(field);
-          setColorPickerOpen(true);
-        }}
-        title="Palitradan tanlash"
-      />
-      <input
-        type="color"
-        value={currentColor}
-        onChange={(e) => handlePropertyChange(field, e.target.value)}
-        style={{ width: 44, height: 40, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
-        title="Rang tanlash"
-      />
-      <TextField
-        label="Hex"
-        value={currentColor}
-        onChange={(e) => handlePropertyChange(field, e.target.value)}
-        size="small"
-        sx={{ width: 140 }}
-        inputProps={{ maxLength: 7 }}
-      />
-    </Box>
-  );
-
-  if (!visualization || !dataset) return null;
-
-  const chartTypeOptions = getChartTypeOptions();
-  const requiredFields = getRequiredFields();
+  if (!visualization) return null;
 
   return (
-    <>
       <Dialog 
         open={open} 
         onClose={onClose}
-        maxWidth={false}
-        fullWidth={false}
-        PaperProps={{
-          sx: { 
-            borderRadius: 3,
-            width: '95vw',
-            maxWidth: '95vw',
-            maxHeight: '90vh'
-          }
-        }}
-      >
-        <DialogTitle sx={{ 
-          m: 0, 
-          p: 3, 
-          backgroundColor: '#f8f9fa',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '2px solid #e0e0e0'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <SettingsIcon sx={{ color: '#1976d2', fontSize: 28 }} />
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#1976d2' }}>
-                {visualization.name} - Xususiyatlar
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Dataset: {dataset.name} | {dataset.rows.length} qator, {dataset.columns.length} ustun
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton onClick={onClose} size="large" sx={{ color: '#666' }}>
+      maxWidth="98vw"
+      fullWidth
+      maxHeight="95vh"
+    >
+      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography variant="h6">Visual xususiyatlari</Typography>
+        <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 0 }}>
-          <Box sx={{ display: 'flex', height: '70vh' }}>
-            {/* Left Side - Properties */}
-            <Box sx={{ flex: 1, p: 3, overflow: 'auto', minWidth: 0 }}>
-              <Grid container spacing={4}>
-                
-                {/* GROUP 1: Basic Properties */}
-                <Grid item xs={12}>
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                      <TitleIcon sx={{ color: '#1976d2', fontSize: 24 }} />
-                      <Typography variant="h6" sx={{ color: '#1976d2', fontWeight: 600 }}>
+      <DialogContent sx={{ height: '80vh', p: 0 }}>
+        <Box sx={{ display: 'flex', height: '100%' }}>
+          {/* Left side - Properties */}
+          <Box sx={{ flex: 0.8, p: 2, borderRight: 1, borderColor: 'divider' }}>
+            <Tabs 
+              value={activeTab} 
+              onChange={(e, newValue) => setActiveTab(newValue)}
+              sx={{ mb: 2 }}
+            >
+              <Tab label="Asosiy" icon={<SettingsIcon />} />
+              <Tab label="Ustunlar" icon={<LabelIcon />} />
+              <Tab label="O'lchamlar" icon={<AspectRatioIcon />} />
+              <Tab label="Ranglar" icon={<PaletteIcon />} />
+            </Tabs>
+
+            {/* Tab 0: Basic Properties */}
+            {activeTab === 0 && (
+              <Paper elevation={1} sx={{ p: 2, borderRadius: 1, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <SettingsIcon sx={{ color: '#2e7d32', fontSize: 20 }} />
+                  <Typography variant="subtitle1" sx={{ color: '#2e7d32', fontWeight: 600 }}>
                         Asosiy xususiyatlar
                       </Typography>
                     </Box>
                     
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
                         <TextField
                           fullWidth
+                      size="small"
                           label="Sarlavha"
                           value={properties.title}
                           onChange={(e) => handlePropertyChange('title', e.target.value)}
-                          size="medium"
                           variant="outlined"
                         />
                       </Grid>
-                      <Grid item xs={12} md={6}>
-                        <FormControl fullWidth size="medium">
-                          <InputLabel>Chart turi</InputLabel>
-                          <Select
-                            value={properties.chartType}
-                            onChange={(e) => handlePropertyChange('chartType', e.target.value)}
-                            label="Chart turi"
-                            variant="outlined"
-                          >
-                            {chartTypeOptions.map(option => (
-                              <MenuItem key={option.value} value={option.value}>
-                                {option.label}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Grid>
+                  
                     </Grid>
                   </Paper>
-                </Grid>
+            )}
 
-                {/* GROUP 2: Column Mapping */}
-                {renderColumnMapping()}
-
-                {/* GROUP 3: Dimensions */}
-                <Grid item xs={12}>
+            {/* Tab 1: Column Mapping */}
+            {activeTab === 1 && (
                   <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                      <AspectRatioIcon sx={{ color: '#2e7d32', fontSize: 24 }} />
+                  <LabelIcon sx={{ color: '#2e7d32', fontSize: 24 }} />
                       <Typography variant="h6" sx={{ color: '#2e7d32', fontWeight: 600 }}>
-                        O'lchamlar
+                    Ustunlar
                       </Typography>
                     </Box>
                     
-                    <Grid container spacing={4}>
-                      <Grid item xs={12} md={6}>
-                        <TextField
-                          fullWidth
-                          label="Kenglik (px)"
-                          type="number"
-                          value={properties.width}
-                          onChange={(e) => handlePropertyChange('width', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: 100, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField
-                          fullWidth
-                          label="Balandlik (px)"
-                          type="number"
-                          value={properties.height}
-                          onChange={(e) => handlePropertyChange('height', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: 200, max: 600, step: 10 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                    </Grid>
+                {renderColumnMapping()}
                   </Paper>
-                </Grid>
+            )}
 
-                {/* GROUP 4: Colors */}
-                <Grid item xs={12}>
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                      <ColorLensIcon sx={{ color: '#9c27b0', fontSize: 24 }} />
-                      <Typography variant="h6" sx={{ color: '#9c27b0', fontWeight: 600 }}>
-                        Ranglar
+            {/* Tab 2: Dimensions */}
+            {activeTab === 2 && (
+              <Paper elevation={1} sx={{ p: 2, borderRadius: 1, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <AspectRatioIcon sx={{ color: '#2e7d32', fontSize: 20 }} />
+                  <Typography variant="subtitle1" sx={{ color: '#2e7d32', fontWeight: 600 }}>
+                    O'lchamlar
                       </Typography>
                     </Box>
                     
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        {renderColorPicker('backgroundColor', 'Orqa fon rangi', properties.backgroundColor)}
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                        <TextField
+                          fullWidth
+                      size="small"
+                      label="Kenglik"
+                          type="number"
+                      value={properties.size.width}
+                      onChange={(e) => handlePropertyChange('size', { 
+                        ...properties.size, 
+                        width: e.target.value === '' ? '' : parseInt(e.target.value) || 400 
+                      })}
+                          variant="outlined"
+                        />
                       </Grid>
-                      <Grid item xs={12} md={6}>
-                        {renderColorPicker('borderColor', 'Chegara rangi', properties.borderColor)}
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        {renderColorPicker('titleColor', 'Sarlavha rangi', properties.titleColor)}
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        {renderColorPicker('dataColor', "Ma'lumotlar rangi", properties.dataColor)}
+                  <Grid item xs={6}>
+                        <TextField
+                          fullWidth
+                      size="small"
+                      label="Balandlik"
+                          type="number"
+                      value={properties.size.height}
+                      onChange={(e) => handlePropertyChange('size', { 
+                        ...properties.size, 
+                        height: e.target.value === '' ? '' : parseInt(e.target.value) || 300 
+                      })}
+                          variant="outlined"
+                        />
                       </Grid>
                     </Grid>
                   </Paper>
-                </Grid>
+            )}
 
-                {/* GROUP 5: Shadow Settings */}
-                <Grid item xs={12}>
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                      <ShadowIcon sx={{ color: '#607d8b', fontSize: 24 }} />
-                      <Typography variant="h6" sx={{ color: '#607d8b', fontWeight: 600 }}>
-                        Soya sozlamalari
+            {/* Tab 3: Colors */}
+            {activeTab === 3 && (
+              <Paper elevation={1} sx={{ p: 2, borderRadius: 1, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <PaletteIcon sx={{ color: '#2e7d32', fontSize: 20 }} />
+                  <Typography variant="subtitle1" sx={{ color: '#2e7d32', fontWeight: 600 }}>
+                    Ranglar
                       </Typography>
                     </Box>
 
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={properties.showShadow !== false}
-                              onChange={(e) => handlePropertyChange('showShadow', e.target.checked)}
-                              color="primary"
-                            />
-                          }
-                          label="Soyani ko'rsatish"
-                          sx={{ '& .MuiFormControlLabel-label': { fontWeight: 500 } }}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        {renderColorPicker('shadowColor', 'Soya rangi', properties.shadowColor)}
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="subtitle2" sx={{ mb: 2, color: '#666', fontWeight: 600 }}>
-                          Soya sozlamalari:
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} md={4}>
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="Soya qalinligi (px)"
-                          value={properties.shadowBlur ?? 20}
-                          onChange={(e) => handlePropertyChange('shadowBlur', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: 0, max: 50, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={4}>
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="X yo'nalish (px)"
-                          value={properties.shadowOffsetX ?? 4}
-                          onChange={(e) => handlePropertyChange('shadowOffsetX', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: -20, max: 20, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={4}>
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="Y yo'nalish (px)"
-                          value={properties.shadowOffsetY ?? 4}
-                          onChange={(e) => handlePropertyChange('shadowOffsetY', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: -20, max: 20, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Box sx={{ p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                            <strong>Hozirgi soya:</strong> {properties.shadowOffsetX || 4}px X, {properties.shadowOffsetY || 4}px Y, {properties.shadowBlur || 20}px qalinlik, {properties.shadowColor || '#000000'} rang
-                          </Typography>
-                          {/* Visual Shadow Preview */}
-                          <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 2, 
-                            mt: 1,
-                            p: 1,
-                            backgroundColor: '#fff',
-                            borderRadius: 1,
-                            border: '1px solid #ddd'
-                          }}>
-                            <Box sx={{ 
-                              width: 40, 
-                              height: 40, 
-                              backgroundColor: '#fff',
-                              borderRadius: 1,
-                              border: '1px solid #ccc',
-                              boxShadow: properties.showShadow ? `${properties.shadowOffsetX || 4}px ${properties.shadowOffsetY || 4}px ${properties.shadowBlur || 20}px ${properties.shadowColor || '#000000'}40` : 'none'
-                            }} />
-                            <Typography variant="caption" color="text.secondary">
-                              Soya ko'rinishi
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </Grid>
-                    </Grid>
+                <Typography variant="body2" color="text.secondary">
+                  Chart ranglarini sozlash uchun ustunlarni tanlang
+                </Typography>
                   </Paper>
-                </Grid>
-
-                {/* GROUP 6: Display Options */}
-                <Grid item xs={12}>
-                  <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                      <ViewModuleIcon sx={{ color: '#ed6c02', fontSize: 24 }} />
-                      <Typography variant="h6" sx={{ color: '#ed6c02', fontWeight: 600 }}>
-                        Ko'rsatish imkoniyatlari
-                      </Typography>
-                    </Box>
-
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={properties.showBorder}
-                              onChange={(e) => handlePropertyChange('showBorder', e.target.checked)}
-                              color="primary"
-                            />
-                          }
-                          label="Chegarani ko'rsatish"
-                          sx={{ '& .MuiFormControlLabel-label': { fontWeight: 500 } }}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="Chegara radius (px)"
-                          value={properties.borderRadius ?? 5}
-                          onChange={(e) => handlePropertyChange('borderRadius', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: 0, max: 20, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="Chegara qalinligi (px)"
-                          value={properties.borderWidth ?? 2}
-                          onChange={(e) => handlePropertyChange('borderWidth', Number(e.target.value))}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">px</InputAdornment>,
-                            inputProps: { min: 0, max: 10, step: 1 }
-                          }}
-                          size="medium"
-                          variant="outlined"
-                        />
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                </Grid>
-              </Grid>
+            )}
             </Box>
 
-                        {/* Right Side - Live Preview */}
-            <Box sx={{ flex: 1, p: 3, borderLeft: '1px solid #e0e0e0', backgroundColor: '#fafafa', minWidth: 0 }}>
-              {/* Preview Header */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, p: 1, backgroundColor: '#e3f2fd', borderRadius: 1 }}>
-                <Box sx={{ 
-                  width: 8, 
-                  height: 8, 
-                  borderRadius: '50%', 
-                  backgroundColor: '#4caf50',
-                  animation: 'pulse 2s infinite',
-                  '@keyframes pulse': {
-                    '0%': { opacity: 1 },
-                    '50%': { opacity: 0.5 },
-                    '100%': { opacity: 1 }
-                  }
-                }} />
-                <Typography variant="subtitle2" sx={{ color: '#1976d2', fontWeight: 600 }}>
-                  Live Preview - Real-time ko'rinish
+          {/* Right side - Live Preview */}
+          <Box sx={{ flex: 1.2, p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <VisibilityIcon sx={{ color: '#2e7d32', fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ color: '#2e7d32', fontWeight: 600 }}>
+                Namuna ko'rinish
                 </Typography>
               </Box>
               
-              {/* Chart ko'rinishi (scrollable area, content can exceed panel width) */}
-              <Box sx={{ width: '100%', overflow: 'auto' }}>
-                <Box key={JSON.stringify(properties)} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100%' }}>
+            <Box sx={{ 
+              width: '100%', 
+              height: '100%', 
+              overflow: 'hidden',
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1
+            }}>
+              <Box sx={{ 
+                height: '100%', 
+                p: 1,
+                transform: 'scale(0.7)',
+                transformOrigin: 'center center'
+              }}>
                 {renderVisualizationPreview()}
               </Box>
               </Box>
@@ -1284,104 +1111,13 @@ const VisualizationPropertiesModal = ({
           </Box>
         </DialogContent>
 
-        <DialogActions sx={{ p: 3, gap: 2, borderTop: '2px solid #e0e0e0' }}>
-          {onDelete && (
-            <Button
-              color="error"
-              variant="outlined"
-              size="large"
-              onClick={() => {
-                onDelete(visualization.id);
-                onClose();
-              }}
-              sx={{ px: 3 }}
-            >
-              O'chirish
-            </Button>
-          )}
-          <Box sx={{ flexGrow: 1 }} />
-          <Button onClick={onClose} variant="outlined" size="large" sx={{ px: 3 }}>
-            Bekor qilish
-          </Button>
-          <Button onClick={handleSave} variant="contained" size="large" sx={{ 
-            backgroundColor: '#1976d2',
-            px: 4,
-            '&:hover': { backgroundColor: '#1565c0' }
-          }}>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose}>Bekor qilish</Button>
+        <Button onClick={handleSave} variant="contained" color="primary">
             Saqlash
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Color Picker Modal */}
-      <Dialog
-        open={colorPickerOpen}
-        onClose={() => setColorPickerOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 3 } }}
-      >
-        <DialogTitle sx={{ 
-          backgroundColor: '#f8f9fa',
-          borderBottom: '1px solid #e0e0e0'
-        }}>
-          Rang tanlash
-        </DialogTitle>
-        <DialogContent sx={{ p: 3 }}>
-          <Box>
-            <Typography variant="body1" gutterBottom sx={{ fontWeight: 500, mb: 2 }}>
-              {activeColorField === 'backgroundColor' && 'Orqa fon rangi'}
-              {activeColorField === 'borderColor' && 'Chegara rangi'}
-              {activeColorField === 'titleColor' && 'Sarlavha rangi'}
-              {activeColorField === 'dataColor' && 'Ma\'lumotlar rangi'}
-            </Typography>
-            
-            {/* Color Palette */}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
-              {[
-                '#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f',
-                '#ffffff', '#f5f5f5', '#e0e0e0', '#333333', '#666666',
-                '#ff9800', '#4caf50', '#2196f3', '#e91e63', '#795548',
-                '#607d8b', '#ff5722', '#00bcd4', '#8bc34a', '#ffc107'
-              ].map((color) => (
-                <Box
-                  key={color}
-                  sx={{
-                    width: 50,
-                    height: 50,
-                    backgroundColor: color,
-                    border: '3px solid #e0e0e0',
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                    '&:hover': { 
-                      borderColor: '#1976d2',
-                      transform: 'scale(1.1)'
-                    },
-                    transition: 'all 0.2s ease'
-                  }}
-                  onClick={() => handleColorChange(activeColorField, color)}
-                />
-              ))}
-            </Box>
-
-            <TextField
-              fullWidth
-              label="Maxsus rang (hex kod)"
-              value={properties[activeColorField]}
-              onChange={(e) => handlePropertyChange(activeColorField, e.target.value)}
-              placeholder="#000000"
-              variant="outlined"
-              size="medium"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setColorPickerOpen(false)} variant="outlined">
-            Yopish
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
   );
 };
 

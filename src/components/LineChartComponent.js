@@ -34,6 +34,43 @@ const LineChartComponent = ({ data, title = "Line Chart", config = {} }) => {
     );
   }
 
+  // Dynamically determine the data keys from the first data item
+  const firstDataItem = data[0];
+  
+  // Use columnMapping from config if available, otherwise try to detect from data
+  let categoryKey, valueKey;
+  
+  if (config.columnMapping && config.columnMapping.category && config.columnMapping.value) {
+    // Use the configured column mapping
+    categoryKey = config.columnMapping.category;
+    
+    // Check if we have aggregation and look for aggregated column name
+    if (config.aggregation && config.aggregation.value && config.aggregation.value !== 'none') {
+      const aggregatedKey = `${config.columnMapping.value}_${config.aggregation.value}`;
+      // Check if aggregated key exists in data
+      if (firstDataItem[aggregatedKey] !== undefined) {
+        valueKey = aggregatedKey;
+        console.log('Using aggregated column:', valueKey);
+      } else {
+        valueKey = config.columnMapping.value;
+        console.log('Aggregated column not found, using original:', valueKey);
+      }
+    } else {
+      valueKey = config.columnMapping.value;
+      console.log('No aggregation, using original column:', valueKey);
+    }
+    
+    console.log('Using configured column mapping:', { categoryKey, valueKey });
+  } else {
+    // Fallback: try to detect from data structure
+    const keys = Object.keys(firstDataItem);
+    categoryKey = keys[0]; // First key is usually category
+    valueKey = keys[1];    // Second key is usually value
+    console.log('Fallback: detected keys from data:', { categoryKey, valueKey, keys });
+  }
+  
+  console.log('Final keys for chart:', { categoryKey, valueKey, firstDataItem });
+
   return (
     <Box sx={{ 
       width: '100%', 
@@ -46,7 +83,7 @@ const LineChartComponent = ({ data, title = "Line Chart", config = {} }) => {
         <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
           {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />}
           <XAxis 
-            dataKey="name" 
+            dataKey={categoryKey} 
             tick={{ fontSize: 12, fill: '#333' }}
             axisLine={{ stroke: '#e0e0e0' }}
           />
@@ -64,7 +101,7 @@ const LineChartComponent = ({ data, title = "Line Chart", config = {} }) => {
           {showLegend && <Legend />}
           <Line 
             type="monotone"
-            dataKey="value" 
+            dataKey={valueKey}
             stroke={dataColor}
             strokeWidth={3}
             fill={dataColor}

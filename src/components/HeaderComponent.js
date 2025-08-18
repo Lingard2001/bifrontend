@@ -23,7 +23,7 @@ import {
   Dataset as DatasetIcon
 } from '@mui/icons-material';
 
-const HeaderComponent = ({ onUploadClick, onClearAllData, onSidebarToggle, onVisualizationsToggle, onDatasetsToggle }) => {
+const HeaderComponent = ({ onDataSourceClick, onClearAllData, onSidebarToggle, onVisualizationsToggle, onDatasetsToggle }) => {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -36,8 +36,8 @@ const HeaderComponent = ({ onUploadClick, onClearAllData, onSidebarToggle, onVis
     setAnchorEl(null);
   };
 
-  const handleUploadClick = () => {
-    onUploadClick();
+  const handleDataSourceClick = () => {
+    onDataSourceClick();
     handleMenuClose();
   };
 
@@ -109,10 +109,10 @@ const HeaderComponent = ({ onUploadClick, onClearAllData, onSidebarToggle, onVis
             </Tooltip>
           )}
 
-          {/* File Upload Button */}
+          {/* Data Source Button */}
           <Button
             color="inherit"
-            onClick={handleUploadClick}
+            onClick={handleDataSourceClick}
             startIcon={<UploadIcon />}
             sx={{ 
               backgroundColor: 'rgba(255,255,255,0.1)',
@@ -123,7 +123,7 @@ const HeaderComponent = ({ onUploadClick, onClearAllData, onSidebarToggle, onVis
               fontWeight: 500
             }}
           >
-            File Upload
+            Data Source
           </Button>
 
           {/* More Options Menu */}
@@ -161,7 +161,7 @@ const HeaderComponent = ({ onUploadClick, onClearAllData, onSidebarToggle, onVis
               }
             }}
           >
-            <MenuItem onClick={handleUploadClick}>
+            <MenuItem onClick={handleDataSourceClick}>
               <ListItemIcon>
                 <AddIcon fontSize="small" />
               </ListItemIcon>
